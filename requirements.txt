@@ -1,0 +1,8 @@
+# nanobanana
+google-genai
+pillow==10.2.0
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+python-dotenv
