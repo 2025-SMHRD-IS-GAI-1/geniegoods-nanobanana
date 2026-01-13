@@ -43,6 +43,7 @@ async def root():
 async def compose_images(
     files: List[UploadFile] = File(...),
     prompt: str = Form(...),
+    category: str = Form(...),
     model: Optional[str] = Form("gemini-2.5-flash-image")
 ):
     """
@@ -58,6 +59,8 @@ async def compose_images(
         
         if not prompt:
             raise HTTPException(status_code=400, detail="프롬프트가 필요합니다.")
+
+        print(f"category: {category}")
         
         # 이미지 파일들을 메모리에서 PIL Image로 변환
         imgs_in = []
@@ -117,11 +120,14 @@ async def compose_images(
 @app.post("/api/nano/sample")
 async def sample_images(
     result_image: UploadFile = File(...),
+    category: str = Form(...),
 ):
     try:
         if not result_image:
             raise HTTPException(status_code=400, detail="이미지 파일이 필요합니다.")
         
+        print(f"category: {category}")
+
         # 파일 내용 읽기
         content = await result_image.read()
         
