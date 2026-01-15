@@ -10,6 +10,7 @@ from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
 import uvicorn
+from unicodedata import category
 
 # .env 파일에서 환경변수 로드
 load_dotenv()
@@ -43,6 +44,7 @@ async def root():
 async def compose_images(
     files: List[UploadFile] = File(...),
     prompt: str = Form(...),
+    category: str = Form(...),
     model: Optional[str] = Form("gemini-2.5-flash-image")
 ):
     """
@@ -58,6 +60,8 @@ async def compose_images(
         
         if not prompt:
             raise HTTPException(status_code=400, detail="프롬프트가 필요합니다.")
+
+        print(f"category: {category}")
         
         # 이미지 파일들을 메모리에서 PIL Image로 변환
         imgs_in = []
@@ -69,7 +73,22 @@ async def compose_images(
             # PIL Image로 직접 로드
             img = Image.open(BytesIO(content))
             imgs_in.append(img)
-        
+
+        # category 에 따라서 규격 정할것
+        if category == "핸드폰케이스":
+            prompt += "\n규격: iPhone 13 하드케이스 기준"
+        elif category == "머그컵":
+            prompt += "\n규격: 머그컵 330ml(11oz), 인쇄영역 20x9cm"
+        elif category == "키링":
+            prompt += "\n규격: 아크릴 키링 50x50mm, 두께 3mm"
+        elif category == "그립톡":
+            prompt += "\n규격: 그립톡 원형 Ø40mm(두께 약 6mm), 인쇄영역 Ø38mm"
+        elif category == "카드 지갑":
+            prompt += "\n규격: 카드 지갑 65x100mm 슬림 카드홀더 기준"
+
+        prompt += "\n업로드한 모든 객체를 누락 없이 포함해서 하나의 디자인으로 구성해줘."
+
+
         # Gemini API 호출
         contents = [prompt] + imgs_in
         
@@ -117,11 +136,14 @@ async def compose_images(
 @app.post("/api/nano/sample")
 async def sample_images(
     result_image: UploadFile = File(...),
+    category: str = Form(...),
 ):
     try:
         if not result_image:
             raise HTTPException(status_code=400, detail="이미지 파일이 필요합니다.")
         
+        print(f"category: {category}")
+
         # 파일 내용 읽기
         content = await result_image.read()
         
@@ -140,8 +162,12 @@ async def sample_images(
             )
         
         prompts = [
-            "굿즈 이미지를 보고 비슷한 시안 이미지를 생성해줘",
-            "굿즈 이미지를 참고하여 새로운 스타일의 시안 이미지를 생성해줘"
+                f"객체를 변경하지 말고, 현재 시안의 분위기와 색감은 유지하되 포즈와 장면을 바꿔서 새롭게 구성해줘. "
+                f"이 이미지는 반드시 굿즈 '{category}'에 적용된 형태의 디자인 시안으로 표현해줘. "
+                f"사진처럼 보이는 결과는 생성하지 말고, 흰 배경에 굿즈만 보이도록 출력해줘.",
+                f"객체를 변경하지 말고, 현재 시안의 분위기와 색감은 유지하되 포즈와 장면을 바꿔서 새롭게 구성해줘. "
+                f"이 이미지는 반드시 굿즈 '{category}'에 적용된 형태의 디자인 시안으로 표현해줘. "
+                f"사진처럼 보이는 결과는 생성하지 말고, 흰 배경에 굿즈만 보이도록 출력해줘."
         ]
         
         # 비동기 병렬 호출
