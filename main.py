@@ -191,26 +191,66 @@ async def sample_images(
                 contents=contents
             )
         
+        # 이미지 생성 함수 (재시도 포함)
+        def generate_image_with_retry(prompt_text, image_index, max_retries=3):
+            for attempt in range(1, max_retries + 1):
+                try:
+                    print(f"이미지 {image_index}번째 생성 시도 {attempt}/{max_retries}...")
+                    response = call_gemini(prompt_text)
+                    
+                    # 응답에서 이미지 추출
+                    if getattr(response, "candidates", None):
+                        cand = response.candidates[0]
+                        if cand and cand.content and cand.content.parts:
+                            for part in cand.content.parts:
+                                if getattr(part, "inline_data", None) and part.inline_data.data:
+                                    out_img = Image.open(BytesIO(part.inline_data.data))
+                                    buffer = BytesIO()
+                                    out_img.save(buffer, format='PNG')
+                                    result_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                    print(f"이미지 {image_index}번째 생성 성공 (시도 {attempt})")
+                                    return result_base64
+                            print(f"이미지 {image_index}번째: 이미지 데이터를 찾을 수 없습니다. (시도 {attempt})")
+                        else:
+                            print(f"이미지 {image_index}번째: candidates가 없거나 비어있습니다. (시도 {attempt})")
+                    else:
+                        print(f"이미지 {image_index}번째: response에 candidates 속성이 없습니다. (시도 {attempt})")
+                    
+                    # 이미지 데이터를 찾지 못한 경우 재시도
+                    if attempt < max_retries:
+                        print(f"이미지 {image_index}번째 재시도 중...")
+                        continue
+                    else:
+                        print(f"이미지 {image_index}번째: 최대 재시도 횟수 초과")
+                        return None
+                        
+                except Exception as e:
+                    print(f"이미지 {image_index}번째 생성 실패 (시도 {attempt}): {str(e)}")
+                    if attempt < max_retries:
+                        print(f"이미지 {image_index}번째 재시도 중...")
+                        continue
+                    else:
+                        print(f"이미지 {image_index}번째: 최대 재시도 횟수 초과")
+                        return None
+            return None
+        
         # ThreadPoolExecutor로 병렬 실행
+        result_base64_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
-                executor.submit(call_gemini, prompts[0]),
-                executor.submit(call_gemini, prompts[1])
+                executor.submit(generate_image_with_retry, prompts[0], 1),
+                executor.submit(generate_image_with_retry, prompts[1], 2)
             ]
-            responses = [f.result() for f in concurrent.futures.as_completed(futures)]
-        
-        result_base64_list = []
-        for response in responses:
-            if getattr(response, "candidates", None):
-                cand = response.candidates[0]
-                if cand and cand.content and cand.content.parts:
-                    for part in cand.content.parts:
-                        if getattr(part, "inline_data", None) and part.inline_data.data:
-                            out_img = Image.open(BytesIO(part.inline_data.data))
-                            buffer = BytesIO()
-                            out_img.save(buffer, format='PNG')
-                            result_base64_list.append(base64.b64encode(buffer.getvalue()).decode('utf-8'))
-                            break
+            
+            # 각 future의 결과를 안전하게 처리
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        result_base64_list.append(result)
+                except Exception as e:
+                    print(f"이미지 생성 중 예외 발생: {str(e)}")
+                    continue
         
         if len(result_base64_list) < 2:
             raise HTTPException(
