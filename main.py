@@ -86,6 +86,8 @@ async def compose_images(
         elif category == "카드 지갑":
             prompt += "\n규격: 카드 지갑 65x100mm 슬림 카드홀더 기준"
 
+        prompt += "\n업로드한 모든 객체를 누락 없이 포함해서 하나의 디자인으로 구성해줘."
+
 
         # Gemini API 호출
         contents = [prompt] + imgs_in
