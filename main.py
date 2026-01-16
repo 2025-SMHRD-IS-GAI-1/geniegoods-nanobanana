@@ -76,17 +76,28 @@ async def compose_images(
 
         # category 에 따라서 규격 정할것
         if category == "핸드폰케이스":
-            prompt += "\n규격: iPhone 13 하드케이스 기준"
+            prompt += "\n규격(내부 기준, 출력에 표기 금지): iPhone 13 하드케이스 기준"
         elif category == "머그컵":
-            prompt += "\n규격: 머그컵 330ml(11oz), 인쇄영역 20x9cm"
+            prompt += "\n규격(내부 기준, 출력에 표기 금지): 머그컵 330ml(11oz), 인쇄영역 20x9cm"
         elif category == "키링":
-            prompt += "\n규격: 아크릴 키링 50x50mm, 두께 3mm"
+            prompt += "\n규격(내부 기준, 출력에 표기 금지): 아크릴 키링 50x50mm, 두께 3mm"
         elif category == "그립톡":
-            prompt += "\n규격: 그립톡 원형 Ø40mm(두께 약 6mm), 인쇄영역 Ø38mm"
+            prompt += "\n규격(내부 기준, 출력에 표기 금지): 그립톡 원형 Ø40mm(두께 약 6mm), 인쇄영역 Ø38mm"
         elif category == "카드 지갑":
-            prompt += "\n규격: 카드 지갑 65x100mm 슬림 카드홀더 기준"
+            prompt += "\n규격(내부 기준, 출력에 표기 금지): 카드 지갑 65x100mm 슬림 카드홀더 기준"
+            prompt += "\n구조: 전면에 카드 슬롯 2개(카드 2장 수납 가능) + 후면 보조 포켓 1개, 상단 오픈형."
+            prompt += "\n디테일: 카드 슬롯 컷라인과 스티치(박음질) 라인이 보이게, 실제 카드지갑 형태로 표현."
+            prompt += "\n출력 규칙: 여권/노트 커버 형태 금지. 반드시 카드 슬롯이 보이는 카드지갑(카드홀더) 형태로."
 
-        prompt += "\n업로드한 모든 객체를 누락 없이 포함해서 하나의 디자인으로 구성해줘."
+        # 객체 포함 조건(모호함 제거)
+        prompt += "\n필수: 업로드된 각 이미지의 주요 객체를 모두 포함할 것(예: 사람 1명 + 동물 1마리). 한 객체라도 누락되면 실패."
+        prompt += "\n필수: 객체는 제품 표면의 메인 디자인으로 선명하게 배치(너무 작게/흐리게/가려지게 넣지 말 것)."
+        prompt += "\n금지: 패턴/배경만 있는 빈 템플릿 시안(객체 없는 결과) 절대 금지."
+
+        # 규칙(도면/텍스트/배경 차단)
+        prompt += "\n출력 규칙: 치수선/눈금/가이드라인/도면 스타일/측정 표기(mm, cm, Ø, 40mm 등)는 전부 금지."
+        prompt += "\n출력 규칙: 제품만 단독으로, 흰색(#FFFFFF) 단색 배경. 추가 텍스트/아이콘/로고/워터마크 없음."
+        prompt += "\n출력 규칙: 제품이 놓인 장면 연출(테이블 위, 창가, 손에 든 컷) 금지. 오브젝트 단독 컷만."
 
 
         # Gemini API 호출
@@ -180,26 +191,66 @@ async def sample_images(
                 contents=contents
             )
         
+        # 이미지 생성 함수 (재시도 포함)
+        def generate_image_with_retry(prompt_text, image_index, max_retries=3):
+            for attempt in range(1, max_retries + 1):
+                try:
+                    print(f"이미지 {image_index}번째 생성 시도 {attempt}/{max_retries}...")
+                    response = call_gemini(prompt_text)
+                    
+                    # 응답에서 이미지 추출
+                    if getattr(response, "candidates", None):
+                        cand = response.candidates[0]
+                        if cand and cand.content and cand.content.parts:
+                            for part in cand.content.parts:
+                                if getattr(part, "inline_data", None) and part.inline_data.data:
+                                    out_img = Image.open(BytesIO(part.inline_data.data))
+                                    buffer = BytesIO()
+                                    out_img.save(buffer, format='PNG')
+                                    result_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                    print(f"이미지 {image_index}번째 생성 성공 (시도 {attempt})")
+                                    return result_base64
+                            print(f"이미지 {image_index}번째: 이미지 데이터를 찾을 수 없습니다. (시도 {attempt})")
+                        else:
+                            print(f"이미지 {image_index}번째: candidates가 없거나 비어있습니다. (시도 {attempt})")
+                    else:
+                        print(f"이미지 {image_index}번째: response에 candidates 속성이 없습니다. (시도 {attempt})")
+                    
+                    # 이미지 데이터를 찾지 못한 경우 재시도
+                    if attempt < max_retries:
+                        print(f"이미지 {image_index}번째 재시도 중...")
+                        continue
+                    else:
+                        print(f"이미지 {image_index}번째: 최대 재시도 횟수 초과")
+                        return None
+                        
+                except Exception as e:
+                    print(f"이미지 {image_index}번째 생성 실패 (시도 {attempt}): {str(e)}")
+                    if attempt < max_retries:
+                        print(f"이미지 {image_index}번째 재시도 중...")
+                        continue
+                    else:
+                        print(f"이미지 {image_index}번째: 최대 재시도 횟수 초과")
+                        return None
+            return None
+        
         # ThreadPoolExecutor로 병렬 실행
+        result_base64_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
-                executor.submit(call_gemini, prompts[0]),
-                executor.submit(call_gemini, prompts[1])
+                executor.submit(generate_image_with_retry, prompts[0], 1),
+                executor.submit(generate_image_with_retry, prompts[1], 2)
             ]
-            responses = [f.result() for f in concurrent.futures.as_completed(futures)]
-        
-        result_base64_list = []
-        for response in responses:
-            if getattr(response, "candidates", None):
-                cand = response.candidates[0]
-                if cand and cand.content and cand.content.parts:
-                    for part in cand.content.parts:
-                        if getattr(part, "inline_data", None) and part.inline_data.data:
-                            out_img = Image.open(BytesIO(part.inline_data.data))
-                            buffer = BytesIO()
-                            out_img.save(buffer, format='PNG')
-                            result_base64_list.append(base64.b64encode(buffer.getvalue()).decode('utf-8'))
-                            break
+            
+            # 각 future의 결과를 안전하게 처리
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        result_base64_list.append(result)
+                except Exception as e:
+                    print(f"이미지 생성 중 예외 발생: {str(e)}")
+                    continue
         
         if len(result_base64_list) < 2:
             raise HTTPException(
