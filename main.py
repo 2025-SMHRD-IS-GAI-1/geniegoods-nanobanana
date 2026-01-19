@@ -82,7 +82,7 @@ async def compose_images(
         elif category == "키링":
             prompt += "\n규격(내부 기준, 출력에 표기 금지): 아크릴 키링 50x50mm, 두께 3mm"
         elif category == "그립톡":
-            prompt += "\n규격(내부 기준, 출력에 표기 금지): 그립톡 원형 Ø40mm(두께 약 6mm), 인쇄영역 Ø38mm"
+            prompt += "\n규격(내부 기준, 출력에 표기 금지): 그립톡 원형 40mm(두께 약 6mm), 인쇄영역 38mm"
         elif category == "카드 지갑":
             prompt += "\n규격(내부 기준, 출력에 표기 금지): 카드 지갑 65x100mm 슬림 카드홀더 기준"
             prompt += "\n구조: 전면에 카드 슬롯 2개(카드 2장 수납 가능) + 후면 보조 포켓 1개, 상단 오픈형."
