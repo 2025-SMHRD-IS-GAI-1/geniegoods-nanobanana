@@ -1,8 +1,30 @@
+# Python cache and build files
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
-.env
+*.egg-info
+*.egg
+dist/
+build/
+
+# Git and version control
 .git
 .gitignore
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+
+# Environment / secrets
+.env
+
+# Models / outputs / temporary data
+*.pt
+multi_out/
+__outputs__/
+logs/
+tmp/
+data/
