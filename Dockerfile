@@ -3,8 +3,15 @@ FROM python:3.12-slim as builder
 
 WORKDIR /app
 
-# pip 업그레이드 및 빌드 도구 설치
-RUN pip install --upgrade pip setuptools wheel
+# 빌드에 필요한 도구 설치
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# pip 업그레이드 및 빌드 도구 설치 (시스템 레벨)
+RUN pip install --upgrade pip && \
+    pip install setuptools wheel build
 
 # Python 패키지 설치 (사용자 디렉토리에 설치)
 COPY requirements.txt .
