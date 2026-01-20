@@ -100,43 +100,56 @@ async def compose_images(
         prompt += "\n출력 규칙: 제품이 놓인 장면 연출(테이블 위, 창가, 손에 든 컷) 금지. 오브젝트 단독 컷만."
 
 
-        # Gemini API 호출
+        # Gemini API 호출 (최대 3번 재시도)
         contents = [prompt] + imgs_in
-        
-        response = client.models.generate_content(
-            model=model,
-            contents=contents
-        )
-        
-        # 결과 이미지 base64 인코딩 (파일 저장하지 않음)
-        saved = False
         result_base64 = None
+        max_retries = 3
         
-        # 안전 파싱 (이미지 없을 때도 안 터짐)
-        if getattr(response, "candidates", None):
-            cand = response.candidates[0]
-            if cand and cand.content and cand.content.parts:
-                for part in cand.content.parts:
-                    if getattr(part, "inline_data", None) and part.inline_data.data:
-                        out_img = Image.open(BytesIO(part.inline_data.data))
-                        saved = True
-                        
-                        # 이미지를 base64로 인코딩 (파일 저장하지 않음)
-                        buffer = BytesIO()
-                        out_img.save(buffer, format='PNG')
-                        result_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                        break
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents
+                )
+                
+                # 안전 파싱 (이미지 없을 때도 안 터짐)
+                if getattr(response, "candidates", None):
+                    cand = response.candidates[0]
+                    if cand and cand.content and cand.content.parts:
+                        for part in cand.content.parts:
+                            if getattr(part, "inline_data", None) and part.inline_data.data:
+                                out_img = Image.open(BytesIO(part.inline_data.data))
+                                
+                                # 이미지를 base64로 인코딩 (파일 저장하지 않음)
+                                buffer = BytesIO()
+                                out_img.save(buffer, format='PNG')
+                                result_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                break
+                
+                # 이미지가 성공적으로 생성되었으면 루프 종료
+                if result_base64 is not None:
+                    break
+                    
+            except Exception as e:
+                # 마지막 시도가 아니면 계속, 마지막 시도면 에러 발생
+                if attempt == max_retries - 1:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"이미지 생성 중 오류 발생 (재시도 {max_retries}회 실패): {str(e)}"
+                    )
+                print(f"이미지 생성 시도 {attempt + 1} 실패, 재시도 중...")
+                continue
         
-        if not saved:
+        # 모든 재시도 후에도 이미지가 없으면 에러
+        if not result_base64:
             raise HTTPException(
                 status_code=500,
-                detail="이미지 결과가 생성되지 않았습니다. 프롬프트를 더 명확하게 작성해주세요."
+                detail=f"이미지 결과가 생성되지 않았습니다. (재시도 {max_retries}회 실패) 프롬프트를 더 명확하게 작성해주세요."
             )
         
         return {
             "message": "이미지 합성 완료",
             "output_path": "memory",  # 가상 경로 (파일 저장하지 않음)
-            "saved": saved,
             "result_data": result_base64
         }
         
