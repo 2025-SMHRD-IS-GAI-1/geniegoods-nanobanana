@@ -28,7 +28,6 @@ async def lifespan(app: FastAPI):
     """서버 시작/종료 시 이벤트 처리"""
     # Startup
     print("Nanobanana API 준비 완료")
-    print("CI/CD 테스트")
     yield
     # Shutdown (필요시 정리 작업)
 
